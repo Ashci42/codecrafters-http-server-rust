@@ -1,5 +1,5 @@
 use crate::{
-    http_header::{ContentType, HttpHeader},
+    http_header::{ContentLength, ContentType, HttpHeader, UserAgent},
     http_response::{HttpResponse, HttpResponseCode},
 };
 
@@ -14,7 +14,7 @@ pub fn handle_echo(echo: String) -> HttpResponse {
         HttpResponseCode::Ok,
         Some(vec![
             HttpHeader::ContentType(ContentType::TextPlain),
-            HttpHeader::ContentLength(content_length),
+            HttpHeader::ContentLength(ContentLength::new(content_length)),
         ]),
         Some(echo),
     )
@@ -22,4 +22,18 @@ pub fn handle_echo(echo: String) -> HttpResponse {
 
 pub fn handle_not_found() -> HttpResponse {
     HttpResponse::new(HttpResponseCode::NotFound, None, None)
+}
+
+pub fn handle_user_agent(user_agent: &UserAgent) -> HttpResponse {
+    let user_agent_value = user_agent.value().to_string();
+    let content_length = user_agent_value.len();
+
+    HttpResponse::new(
+        HttpResponseCode::Ok,
+        Some(vec![
+            HttpHeader::ContentType(ContentType::TextPlain),
+            HttpHeader::ContentLength(ContentLength::new(content_length)),
+        ]),
+        Some(user_agent_value),
+    )
 }

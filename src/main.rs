@@ -11,6 +11,7 @@ use itertools::Itertools;
 enum HttpRequestType {
     Root,
     Echo(String),
+    UserAgent,
 }
 
 impl HttpRequestType {
@@ -19,6 +20,7 @@ impl HttpRequestType {
         match request_target_parts[..] {
             ["", ""] => Some(HttpRequestType::Root),
             ["", "echo", echo] => Some(HttpRequestType::Echo(echo.to_string())),
+            ["", "user-agent"] => Some(HttpRequestType::UserAgent),
             _ => None,
         }
     }
@@ -40,6 +42,11 @@ impl TcpStreamHandler {
         let http_response = match request_type {
             Some(HttpRequestType::Root) => http_request_handler::handle_root(),
             Some(HttpRequestType::Echo(echo)) => http_request_handler::handle_echo(echo),
+            Some(HttpRequestType::UserAgent) => http_request_handler::handle_user_agent(
+                http_request
+                    .user_agent()
+                    .expect("Request should have an user agent"),
+            ),
             None => http_request_handler::handle_not_found(),
         };
         let http_response = http_response.to_string();
