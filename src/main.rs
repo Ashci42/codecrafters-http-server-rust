@@ -1,10 +1,28 @@
+mod http_header;
 mod http_request;
+mod http_request_handler;
 mod http_response;
 
 use std::io::Write;
 
 use http_request::HttpRequest;
-use http_response::{HttpResponse, HttpResponseCode};
+use itertools::Itertools;
+
+enum HttpRequestType {
+    Root,
+    Echo(String),
+}
+
+impl HttpRequestType {
+    fn try_new(request_target: &str) -> Option<Self> {
+        let request_target_parts = request_target.split('/').collect_vec();
+        match request_target_parts[..] {
+            ["", ""] => Some(HttpRequestType::Root),
+            ["", "echo", echo] => Some(HttpRequestType::Echo(echo.to_string())),
+            _ => None,
+        }
+    }
+}
 
 struct TcpStreamHandler {
     stream: std::net::TcpStream,
@@ -18,9 +36,11 @@ impl TcpStreamHandler {
     fn handle(&mut self) {
         let http_request = HttpRequest::from(&self.stream);
         let request_target = http_request.request_target();
-        let http_response = match request_target {
-            "/" => HttpResponse::new(HttpResponseCode::Ok),
-            _ => HttpResponse::new(HttpResponseCode::NotFound),
+        let request_type = HttpRequestType::try_new(request_target);
+        let http_response = match request_type {
+            Some(HttpRequestType::Root) => http_request_handler::handle_root(),
+            Some(HttpRequestType::Echo(echo)) => http_request_handler::handle_echo(echo),
+            None => http_request_handler::handle_not_found(),
         };
         let http_response = http_response.to_string();
         self.stream
