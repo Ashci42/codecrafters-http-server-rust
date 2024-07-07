@@ -1,4 +1,6 @@
-use std::{io::BufRead, slice::Iter};
+use std::slice::Iter;
+
+use tokio::io::AsyncBufReadExt;
 
 use crate::http_header::{HttpHeader, UserAgent};
 
@@ -21,15 +23,14 @@ impl HttpRequest {
 
         None
     }
-}
 
-impl From<&std::net::TcpStream> for HttpRequest {
-    fn from(value: &std::net::TcpStream) -> Self {
-        let mut buf_reader = std::io::BufReader::new(value);
+    pub async fn from_tcp_stream(stream: &mut tokio::net::TcpStream) -> Self {
+        let mut buf_reader = tokio::io::BufReader::new(stream);
 
         let mut request_line = String::new();
         buf_reader
             .read_line(&mut request_line)
+            .await
             .expect("Can read request line from tcp stream");
         let request_line = request_line.trim_end();
         let request_line = RequestLine::from(request_line);
@@ -38,6 +39,7 @@ impl From<&std::net::TcpStream> for HttpRequest {
         let mut header = String::new();
         buf_reader
             .read_line(&mut header)
+            .await
             .expect("Can read headers from tcp stream");
         while !header.trim_end().is_empty() {
             http_headers.add(
@@ -47,6 +49,7 @@ impl From<&std::net::TcpStream> for HttpRequest {
             header.clear();
             buf_reader
                 .read_line(&mut header)
+                .await
                 .expect("Can read headers from tcp stream");
         }
 
