@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::{
     http_header::{ContentLength, ContentType, HttpHeader, UserAgent},
     http_response::{HttpResponse, HttpResponseCode},
@@ -36,4 +38,27 @@ pub fn handle_user_agent(user_agent: &UserAgent) -> HttpResponse {
         ]),
         Some(user_agent_value),
     )
+}
+
+pub async fn handle_files(file: String, directory: &PathBuf) -> HttpResponse {
+    let mut file_path = PathBuf::from(directory);
+    file_path.push(file);
+
+    if file_path.exists() {
+        let file_contents = tokio::fs::read_to_string(file_path)
+            .await
+            .expect("Can read file contents");
+        let content_length = file_contents.len();
+
+        HttpResponse::new(
+            HttpResponseCode::Ok,
+            Some(vec![
+                HttpHeader::ContentType(ContentType::ApplicationOctetStream),
+                HttpHeader::ContentLength(ContentLength::new(content_length)),
+            ]),
+            Some(file_contents),
+        )
+    } else {
+        HttpResponse::new(HttpResponseCode::NotFound, None, None)
+    }
 }
