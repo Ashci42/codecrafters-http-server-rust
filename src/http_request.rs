@@ -74,7 +74,7 @@ impl HttpRequest {
         let content_length = http_headers.content_length();
 
         let body = if let Some(content_length) = content_length {
-            let mut buf = Vec::with_capacity(content_length);
+            let mut buf = vec![0; content_length];
             buf_reader
                 .read_exact(&mut buf)
                 .await
