@@ -1,12 +1,30 @@
 use std::slice::Iter;
 
-use tokio::io::AsyncBufReadExt;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 
 use crate::http_header::{HttpHeader, UserAgent};
+
+pub enum HttpMethod {
+    Get,
+    Post,
+}
+
+impl TryFrom<&str> for HttpMethod {
+    type Error = HttpMethodError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "GET" => Ok(Self::Get),
+            "POST" => Ok(Self::Post),
+            _ => Err(HttpMethodError),
+        }
+    }
+}
 
 pub struct HttpRequest {
     request_line: RequestLine,
     http_headers: HttpHeaders,
+    body: Option<String>,
 }
 
 impl HttpRequest {
@@ -53,29 +71,63 @@ impl HttpRequest {
                 .expect("Can read headers from tcp stream");
         }
 
+        let content_length = http_headers.content_length();
+
+        let body = if let Some(content_length) = content_length {
+            let mut buf = Vec::with_capacity(content_length);
+            buf_reader
+                .read_exact(&mut buf)
+                .await
+                .expect("Can read request body");
+
+            Some(String::from_utf8(buf).expect("Request body is valid utf8 string"))
+        } else {
+            None
+        };
+
         Self {
             request_line,
             http_headers,
+            body,
         }
+    }
+
+    pub fn http_method(&self) -> &HttpMethod {
+        &self.request_line.http_method
+    }
+
+    pub fn body(&self) -> Option<&String> {
+        self.body.as_ref()
     }
 }
 
+#[derive(Debug)]
+pub struct HttpMethodError;
+
 struct RequestLine {
     request_target: String,
+    http_method: HttpMethod,
 }
 
 impl From<&str> for RequestLine {
     fn from(value: &str) -> Self {
         let mut request_line_parts = value.split(' ');
-        request_line_parts
+
+        let http_method = request_line_parts
             .next()
             .expect("Request line should have a HTTP method");
+        let http_method = HttpMethod::try_from(http_method)
+            .expect("Request line should have a correct HTTP method");
+
         let request_target = request_line_parts
             .next()
             .expect("Request line should have a request target");
         let request_target = request_target.to_string();
 
-        Self { request_target }
+        Self {
+            request_target,
+            http_method,
+        }
     }
 }
 
@@ -88,6 +140,17 @@ impl HttpHeaders {
 
     fn add(&mut self, http_header: HttpHeader) {
         self.0.push(http_header);
+    }
+
+    fn content_length(&self) -> Option<usize> {
+        let mut content_length_value = None;
+        for http_header in &self.0 {
+            if let HttpHeader::ContentLength(content_length) = http_header {
+                content_length_value = Some(content_length.value());
+            }
+        }
+
+        content_length_value
     }
 }
 

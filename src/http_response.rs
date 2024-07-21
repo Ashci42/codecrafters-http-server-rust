@@ -5,6 +5,7 @@ use crate::http_header::HttpHeader;
 pub enum HttpResponseCode {
     Ok,
     NotFound,
+    Created,
 }
 
 impl Display for HttpResponseCode {
@@ -12,6 +13,7 @@ impl Display for HttpResponseCode {
         match self {
             Self::Ok => write!(f, "200 OK"),
             Self::NotFound => write!(f, "404 Not Found"),
+            Self::Created => write!(f, "201 Created"),
         }
     }
 }

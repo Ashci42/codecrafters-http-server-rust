@@ -7,26 +7,33 @@ mod http_response;
 use std::{path::PathBuf, sync::Arc};
 
 use args::Args;
-use http_request::HttpRequest;
+use http_request::{HttpMethod, HttpRequest};
 use itertools::Itertools;
 use tokio::io::AsyncWriteExt;
 
 enum HttpRequestType {
-    Root,
-    Echo(String),
-    UserAgent,
-    File(String),
+    GetRoot,
+    GetEcho(String),
+    GetUserAgent,
+    GetFile(String),
+    PostFile(String),
 }
 
 impl HttpRequestType {
-    fn try_new(request_target: &str) -> Option<Self> {
+    fn try_new(http_method: &HttpMethod, request_target: &str) -> Option<Self> {
         let request_target_parts = request_target.split('/').collect_vec();
-        match request_target_parts[..] {
-            ["", ""] => Some(HttpRequestType::Root),
-            ["", "echo", echo] => Some(HttpRequestType::Echo(echo.to_string())),
-            ["", "user-agent"] => Some(HttpRequestType::UserAgent),
-            ["", "files", file] => Some(HttpRequestType::File(file.to_string())),
-            _ => None,
+        match http_method {
+            HttpMethod::Get => match request_target_parts[..] {
+                ["", ""] => Some(HttpRequestType::GetRoot),
+                ["", "echo", echo] => Some(HttpRequestType::GetEcho(echo.to_string())),
+                ["", "user-agent"] => Some(HttpRequestType::GetUserAgent),
+                ["", "files", file] => Some(HttpRequestType::GetFile(file.to_string())),
+                _ => None,
+            },
+            HttpMethod::Post => match request_target_parts[..] {
+                ["", "files", file] => Some(HttpRequestType::PostFile(file.to_string())),
+                _ => None,
+            },
         }
     }
 }
@@ -42,24 +49,37 @@ impl TcpStreamHandler {
 
     async fn handle(&mut self, config: Arc<tokio::sync::Mutex<Config>>) {
         let http_request = HttpRequest::from_tcp_stream(&mut self.stream).await;
+        let http_method = http_request.http_method();
         let request_target = http_request.request_target();
-        let request_type = HttpRequestType::try_new(request_target);
+        let request_type = HttpRequestType::try_new(http_method, request_target);
 
         let http_response = match request_type {
-            Some(HttpRequestType::Root) => http_request_handler::handle_root(),
-            Some(HttpRequestType::Echo(echo)) => http_request_handler::handle_echo(echo),
-            Some(HttpRequestType::UserAgent) => http_request_handler::handle_user_agent(
+            Some(HttpRequestType::GetRoot) => http_request_handler::handle_get_root(),
+            Some(HttpRequestType::GetEcho(echo)) => http_request_handler::handle_get_echo(echo),
+            Some(HttpRequestType::GetUserAgent) => http_request_handler::handle_get_user_agent(
                 http_request
                     .user_agent()
                     .expect("Request should have an user agent"),
             ),
-            Some(HttpRequestType::File(file)) => {
+            Some(HttpRequestType::GetFile(file)) => {
                 let config = config.lock().await;
                 let directory = config
                     .directory()
                     .expect("Should have a directory if handling file requests");
 
-                http_request_handler::handle_files(file, directory).await
+                http_request_handler::handle_get_files(file, directory).await
+            }
+            Some(HttpRequestType::PostFile(file)) => {
+                let config = config.lock().await;
+                let directory = config
+                    .directory()
+                    .expect("Should have a directory if handling file requests");
+                let text = http_request
+                    .body()
+                    .expect("POST file has a request body")
+                    .to_string();
+
+                http_request_handler::handle_post_files(file, directory, text).await
             }
             None => http_request_handler::handle_not_found(),
         };

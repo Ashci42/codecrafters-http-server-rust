@@ -35,6 +35,16 @@ impl TryFrom<&str> for HttpHeader {
                     user_agent.to_string(),
                 ))),
                 ("Accept", accept) => Ok(HttpHeader::Accept(Accept::new(accept.to_string()))),
+                ("Content-Type", content_type) => {
+                    let content_type = ContentType::try_from(content_type)?;
+
+                    Ok(HttpHeader::ContentType(content_type))
+                }
+                ("Content-Length", content_length) => {
+                    let content_length = ContentLength::try_from(content_length)?;
+
+                    Ok(HttpHeader::ContentLength(content_length))
+                }
                 _ => Err(HttpHeaderError::ParseString(value.to_string())),
             }
         } else {
@@ -57,22 +67,48 @@ impl Display for ContentType {
     }
 }
 
+impl TryFrom<&str> for ContentType {
+    type Error = ContentTypeError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "text/plain" => Ok(Self::TextPlain),
+            "application/octet-stream" => Ok(Self::ApplicationOctetStream),
+            _ => Err(ContentTypeError::new(value)),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum HttpHeaderError {
     ParseString(String),
+    InvalidContentType(ContentTypeError),
+    InvalidContentLength(ContentLengthError),
 }
 
 impl Display for HttpHeaderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            HttpHeaderError::ParseString(s) => {
-                write!(f, "Failed to parse header from string: {}", s)
-            }
+            Self::ParseString(s) => write!(f, "Failed to parse header from string: {}", s),
+            Self::InvalidContentType(content_type_err) => write!(f, "{}", content_type_err),
+            Self::InvalidContentLength(content_length_err) => write!(f, "{}", content_length_err),
         }
     }
 }
 
 impl Error for HttpHeaderError {}
+
+impl From<ContentTypeError> for HttpHeaderError {
+    fn from(value: ContentTypeError) -> Self {
+        Self::InvalidContentType(value)
+    }
+}
+
+impl From<ContentLengthError> for HttpHeaderError {
+    fn from(value: ContentLengthError) -> Self {
+        Self::InvalidContentLength(value)
+    }
+}
 
 pub struct ContentLength(usize);
 
@@ -80,11 +116,28 @@ impl ContentLength {
     pub fn new(content_length: usize) -> Self {
         Self(content_length)
     }
+
+    pub fn value(&self) -> usize {
+        self.0
+    }
 }
 
 impl Display for ContentLength {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl TryFrom<&str> for ContentLength {
+    type Error = ContentLengthError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let content_length = value.parse();
+
+        match content_length {
+            Ok(content_length) => Ok(Self::new(content_length)),
+            Err(_) => Err(ContentLengthError::new(value)),
+        }
     }
 }
 
@@ -133,3 +186,45 @@ impl Display for Accept {
         write!(f, "{}", self.0)
     }
 }
+
+#[derive(Debug)]
+pub struct ContentTypeError {
+    content_type: String,
+}
+
+impl ContentTypeError {
+    fn new(content_type: &str) -> Self {
+        Self {
+            content_type: content_type.to_string(),
+        }
+    }
+}
+
+impl Display for ContentTypeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Invalid content type: {}", self.content_type)
+    }
+}
+
+impl Error for ContentTypeError {}
+
+#[derive(Debug)]
+pub struct ContentLengthError {
+    content_length: String,
+}
+
+impl ContentLengthError {
+    fn new(content_type: &str) -> Self {
+        Self {
+            content_length: content_type.to_string(),
+        }
+    }
+}
+
+impl Display for ContentLengthError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Invalid content type: {}", self.content_length)
+    }
+}
+
+impl Error for ContentLengthError {}
